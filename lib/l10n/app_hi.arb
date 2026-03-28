@@ -1,0 +1,33 @@
+{
+  "@@locale": "hi",
+  "appTitle": "एंड्रोब्लाइट",
+  "tagline": "मैलवेयर डिटेक्शन",
+
+  "homeWelcomeTitle": "आज आप क्या\nस्कैन करना चाहेंगे?",
+  "homeWelcomeSubtitle": "मैलवेयर के लिए विश्लेषण करने हेतु स्कैन विधि चुनें",
+
+  "scanApkTitle": "APK फ़ाइल स्कैन करें",
+  "scanApkDescription": "स्थानीय APK फ़ाइल अपलोड करें और विश्लेषण करें",
+
+  "scanPlayStoreTitle": "Play Store ऐप स्कैन करें",
+  "scanPlayStoreDescription": "Play Store URL या पैकेज नाम से विश्लेषण करें",
+
+  "scanMyPhoneTitle": "मेरा फ़ोन स्कैन करें",
+  "scanMyPhoneDescription": "सभी इंस्टॉल किए गए ऐप्स को मैलवेयर के लिए जाँचें",
+
+  "deviceStatusRooted": "रूटेड",
+  "deviceStatusSecure": "सुरक्षित",
+
+  "recCritical": "⚠️ इंस्टॉल न करें - उच्च मैलवेयर संभावना पाई गई",
+  "recHigh": "⚠️ अत्यंत सावधानी बरतें - कई जोखिम संकेतक मिले",
+  "recMedium": "⚠️ इंस्टॉल करने से पहले अनुमतियों की सावधानीपूर्वक समीक्षा करें",
+  "recLow": "✅ यह एप्लिकेशन सुरक्षित प्रतीत होती है",
+
+  "resultLabelMalware": "मैलवेयर",
+  "resultLabelBenign": "सुरक्षित",
+
+  "multiEngineVerdicts": "मल्टी-इंजन निर्णय",
+  "technicalMetadata": "तकनीकी विवरण",
+
+  "footerPoweredBy": "AndroBlight ग्रुप - 47 द्वारा संचालित"
+}

@@ -1,0 +1,51 @@
+{
+  "@@locale": "en",
+  "appTitle": "AndroBlight",
+  "@appTitle": { "description": "Application name" },
+
+  "tagline": "Malware Detection",
+  "@tagline": { "description": "Subtitle on home screen" },
+
+  "homeWelcomeTitle": "What would you like\nto scan today?",
+  "@homeWelcomeTitle": { "description": "Home screen heading" },
+
+  "homeWelcomeSubtitle": "Choose a scan method to analyze for malware",
+  "@homeWelcomeSubtitle": { "description": "Home screen subheading" },
+
+  "scanApkTitle": "Scan APK File",
+  "@scanApkTitle": { "description": "APK scan card title" },
+
+  "scanApkDescription": "Upload and analyze a local APK file",
+  "@scanApkDescription": { "description": "APK scan card description" },
+
+  "scanPlayStoreTitle": "Scan Play Store App",
+  "@scanPlayStoreTitle": { "description": "Play Store scan card title" },
+
+  "scanPlayStoreDescription": "Analyze using Play Store URL or package name",
+  "@scanPlayStoreDescription": { "description": "Play Store scan card description" },
+
+  "scanMyPhoneTitle": "Scan My Phone",
+  "@scanMyPhoneTitle": { "description": "Installed apps scan card title" },
+
+  "scanMyPhoneDescription": "Check all installed apps for malware",
+  "@scanMyPhoneDescription": { "description": "Installed apps scan card description" },
+
+  "deviceStatusRooted": "Rooted",
+  "@deviceStatusRooted": { "description": "Badge label for rooted device" },
+
+  "deviceStatusSecure": "Secure",
+  "@deviceStatusSecure": { "description": "Badge label for secure device" },
+
+  "recCritical": "⚠️ DO NOT INSTALL - High malware probability detected",
+  "recHigh": "⚠️ Exercise extreme caution - Multiple risk indicators found",
+  "recMedium": "⚠️ Review permissions carefully before installing",
+  "recLow": "✅ This application appears safe to install",
+
+  "resultLabelMalware": "MALWARE",
+  "resultLabelBenign": "BENIGN",
+
+  "multiEngineVerdicts": "Multi-Engine Verdicts",
+  "technicalMetadata": "Technical Metadata",
+
+  "footerPoweredBy": "Powered by AndroBlight Group - 47"
+}
