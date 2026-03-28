@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'core/theme.dart';
+import 'l10n/app_localizations.dart';
 import 'services/api_service.dart';
 import 'services/storage_service.dart';
 import 'services/auth_service.dart';
@@ -26,9 +26,14 @@ void main() async {
 
   final apiService = ApiService();
 
-  // Initialize auth service (restores saved tokens)
+  // Initialize auth service (restores saved tokens into ApiService)
   final authService = AuthService(apiService);
   await authService.init();
+
+  // Restore AuthProvider state from storage before any screen reads isAuthenticated.
+  // (Hot restart re-runs main; without awaiting, Splash could see initial != authenticated.)
+  final authProvider = AuthProvider(authService);
+  await authProvider.init();
 
   // Create repositories
   final scanRepository = ScanRepository(apiService);
@@ -38,7 +43,7 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (_) => AuthProvider(authService)..init(),
+          create: (_) => authProvider,
         ),
         ChangeNotifierProvider(create: (_) => HealthProvider(scanRepository)),
         ChangeNotifierProvider(
@@ -69,13 +74,8 @@ class AndroBlight extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: const SplashScreen(),
-      // i18n support (Chunk 4B)
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [Locale('en'), Locale('hi')],
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
     );
   }
 }

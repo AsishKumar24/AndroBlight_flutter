@@ -19,12 +19,19 @@ class ScanRepository {
     File file, {
     Map<String, dynamic>? deviceInfo,
     void Function(int sent, int total)? onProgress,
+    bool forceRescan = false,
   }) async {
     return await _apiService.scanApk(
       file,
       deviceInfo: deviceInfo,
       onProgress: onProgress,
+      forceRescan: forceRescan,
     );
+  }
+
+  /// Clears server-side APK scan cache so the next upload is recomputed.
+  Future<void> clearServerScanCache() async {
+    await _apiService.clearServerScanCache();
   }
 
   /// Scan a Play Store app by package name or URL

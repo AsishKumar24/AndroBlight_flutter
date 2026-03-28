@@ -20,6 +20,8 @@ class ScanApkScreen extends StatefulWidget {
 
 class _ScanApkScreenState extends State<ScanApkScreen> {
   File? _selectedFile;
+  /// POST `force_rescan=true` — bypass server `scan_cache.json` for this upload.
+  bool _forceRescan = false;
 
   Future<void> _pickFile() async {
     try {
@@ -57,7 +59,10 @@ class _ScanApkScreenState extends State<ScanApkScreen> {
     if (isSample) {
       await provider.scanApkFile(File('sample_malware.apk'), isSample: true);
     } else {
-      await provider.scanApkFile(_selectedFile!);
+      await provider.scanApkFile(
+        _selectedFile!,
+        forceRescan: _forceRescan,
+      );
     }
 
     if (!mounted) return;
@@ -78,6 +83,55 @@ class _ScanApkScreenState extends State<ScanApkScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(scan.errorMessage ?? 'Scan failed'),
+          backgroundColor: AppTheme.malwareRed,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmClearServerCache() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear server scan cache?'),
+        content: const Text(
+          'This removes cached results on the backend for all files. '
+          'The next scan of any APK will run a full analysis again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await context.read<ScanProvider>().clearServerScanCache();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Server scan cache cleared'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not clear cache: $e'),
           backgroundColor: AppTheme.malwareRed,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -157,6 +211,8 @@ class _ScanApkScreenState extends State<ScanApkScreen> {
                         _buildPrimaryButton(r, provider),
                         SizedBox(height: r.spacingMD),
                         _buildSampleButton(r, provider),
+                        SizedBox(height: r.spacingLG),
+                        _buildAdvancedScanOptions(r, provider),
                         SizedBox(height: r.spacingLG),
                         _buildBackendPill(r, provider),
                         SizedBox(height: r.spacingLG),
@@ -335,6 +391,102 @@ class _ScanApkScreenState extends State<ScanApkScreen> {
     );
   }
 
+  Widget _buildAdvancedScanOptions(Responsive r, ScanProvider provider) {
+    return Material(
+      color: AppTheme.surfaceLight,
+      borderRadius: BorderRadius.circular(AppRadius.r20(context)),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: EdgeInsets.symmetric(
+            horizontal: r.spacingMD,
+            vertical: r.spacingXS,
+          ),
+          childrenPadding: EdgeInsets.fromLTRB(
+            r.spacingSM,
+            0,
+            r.spacingSM,
+            r.spacingMD,
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.tune_rounded, size: r.sp(20), color: AppTheme.brand),
+              SizedBox(width: r.spacingSM),
+              Text(
+                'Cache & rescan',
+                style: TextStyle(
+                  fontSize: r.sp(15),
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          subtitle: Text(
+            'Avoid stale results when testing',
+            style: TextStyle(
+              fontSize: r.sp(12),
+              color: AppTheme.textMuted,
+            ),
+          ),
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _forceRescan,
+              onChanged: provider.isScanning
+                  ? null
+                  : (v) => setState(() => _forceRescan = v),
+              title: Text(
+                'Force new scan',
+                style: TextStyle(
+                  fontSize: r.sp(14),
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              subtitle: Text(
+                'Skip server cache for this file only (same APK, fresh analysis)',
+                style: TextStyle(
+                  fontSize: r.sp(11),
+                  color: AppTheme.textSecondary,
+                  height: 1.3,
+                ),
+              ),
+              activeThumbColor: AppTheme.brand,
+            ),
+            SizedBox(height: r.spacingSM),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: provider.isScanning ? null : _confirmClearServerCache,
+                icon: Icon(Icons.delete_sweep_outlined, size: r.sp(18)),
+                label: Text(
+                  'Clear all server cache',
+                  style: TextStyle(
+                    fontSize: r.sp(13),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.textSecondary,
+                  side: BorderSide(color: AppTheme.textMuted.withAlpha(100)),
+                  padding: EdgeInsets.symmetric(
+                    vertical: r.spacingSM + 2,
+                    horizontal: r.spacingMD,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSampleButton(Responsive r, ScanProvider provider) {
     return OutlinedButton.icon(
       onPressed: provider.isScanning ? null : () => _handleScan(isSample: true),
@@ -361,19 +513,19 @@ class _ScanApkScreenState extends State<ScanApkScreen> {
   }
 
   Widget _buildBackendPill(Responsive r, ScanProvider provider) {
-    final demo = provider.isUsingDemoMode;
+    final startupOffline = !provider.isBackendOnline;
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: r.spacingMD,
         vertical: r.spacingSM,
       ),
       decoration: BoxDecoration(
-        color: demo
+        color: startupOffline
             ? AppTheme.warningAmber.withAlpha(22)
             : AppTheme.benignGreen.withAlpha(22),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: demo
+          color: startupOffline
               ? AppTheme.warningAmber.withAlpha(70)
               : AppTheme.benignGreen.withAlpha(70),
         ),
@@ -382,17 +534,19 @@ class _ScanApkScreenState extends State<ScanApkScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            demo ? Icons.science_rounded : Icons.cloud_done_rounded,
+            startupOffline ? Icons.cloud_off_rounded : Icons.cloud_done_rounded,
             size: 18,
-            color: demo ? AppTheme.warningAmber : AppTheme.benignGreen,
+            color: startupOffline ? AppTheme.warningAmber : AppTheme.benignGreen,
           ),
           SizedBox(width: r.spacingSM),
           Flexible(
             child: Text(
-              demo ? 'Demo mode — simulated response' : 'Connected to live engine',
+              startupOffline
+                  ? 'Could not verify server at launch — scans still use your configured API'
+                  : 'Connected to live engine',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: demo ? AppTheme.warningAmber : AppTheme.benignGreen,
+                color: startupOffline ? AppTheme.warningAmber : AppTheme.benignGreen,
                 fontSize: r.sp(12),
                 fontWeight: FontWeight.w600,
               ),

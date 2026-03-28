@@ -13,6 +13,8 @@ class ApiConfig {
   static const String healthEndpoint = '/health';
   static const String predictEndpoint = '/predict';
   static const String predictPlaystoreEndpoint = '/predict-playstore';
+  /// Clears server-side `scan_cache.json` (POST).
+  static const String clearCacheEndpoint = '/clear-cache';
 
   // Auth Endpoints
   static const String registerEndpoint = '/auth/register';

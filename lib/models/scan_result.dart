@@ -24,6 +24,146 @@ Map<String, dynamic>? _parseJsonMap(dynamic value) {
   return null;
 }
 
+double _parseJsonDouble(dynamic value, [double fallback = 0.0]) {
+  if (value == null) return fallback;
+  if (value is num) return value.toDouble();
+  if (value is bool) return value ? 1.0 : 0.0;
+  if (value is String) return double.tryParse(value) ?? fallback;
+  return fallback;
+}
+
+int? _parseJsonInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.round();
+  if (value is bool) return value ? 1 : 0;
+  if (value is String) return int.tryParse(value);
+  return null;
+}
+
+List<String>? _parseRecommendationsList(Map<String, dynamic> json) {
+  final recs = json['recommendations'];
+  if (recs is List) {
+    return recs.map((e) => e.toString()).toList();
+  }
+  final rec = json['recommendation'];
+  if (rec is List) {
+    return rec.map((e) => e.toString()).toList();
+  }
+  if (rec is String) {
+    return [rec];
+  }
+  return null;
+}
+
+/// Parse [multi_engine_results] without failing the whole [ScanResult] on one bad row.
+List<EngineResult>? _parseMultiEngineResultsList(dynamic mer) {
+  if (mer is! List) return null;
+  final out = <EngineResult>[];
+  for (final e in mer) {
+    final m = _parseJsonMap(e);
+    if (m == null) continue;
+    try {
+      out.add(EngineResult.fromJson(m));
+    } catch (_) {
+      // Skip malformed engine entries (Dio may decode nested maps loosely).
+    }
+  }
+  return out.isEmpty ? null : out;
+}
+
+/// Single row from backend [final_verdict.reasons].
+class VerdictReason {
+  final String code;
+  final String label;
+  final String detail;
+
+  VerdictReason({
+    required this.code,
+    required this.label,
+    required this.detail,
+  });
+
+  factory VerdictReason.fromJson(Map<String, dynamic> json) {
+    return VerdictReason(
+      code: json['code'] as String? ?? '',
+      label: json['label'] as String? ?? '',
+      detail: json['detail'] as String? ?? '',
+    );
+  }
+}
+
+/// Primary AI signal from backend ([ml_risk_score] = normalized 0–100 before weighting).
+class MlSignal {
+  final String label;
+  final double confidence;
+  final String role;
+  final String? note;
+  /// Backend-normalized model predicted risk 0–100 (Malware/Suspicious/Benign mapping).
+  final double? mlRiskScore;
+
+  MlSignal({
+    required this.label,
+    required this.confidence,
+    required this.role,
+    this.note,
+    this.mlRiskScore,
+  });
+
+  factory MlSignal.fromJson(Map<String, dynamic> json) {
+    final raw = json['ml_risk_score'];
+    return MlSignal(
+      label: json['label'] as String? ?? 'Unknown',
+      confidence: _parseJsonDouble(json['confidence']),
+      role: json['role'] as String? ?? 'primary',
+      note: json['note'] as String?,
+      mlRiskScore: raw == null ? null : _parseJsonDouble(raw),
+    );
+  }
+
+  int get confidencePercent => (confidence * 100).round();
+}
+
+/// Centralized aggregation from the backend (permissions, externals, rules, ML advisory).
+class FinalVerdict {
+  final String level;
+  final int riskScore;
+  final int safetyScore;
+  final List<VerdictReason> reasons;
+  final MlSignal mlSignal;
+
+  FinalVerdict({
+    required this.level,
+    required this.riskScore,
+    required this.safetyScore,
+    required this.reasons,
+    required this.mlSignal,
+  });
+
+  factory FinalVerdict.fromJson(Map<String, dynamic> json) {
+    final raw = json['reasons'];
+    final reasons = <VerdictReason>[];
+    if (raw is List) {
+      for (final e in raw) {
+        final m = _parseJsonMap(e);
+        if (m != null) {
+          reasons.add(VerdictReason.fromJson(m));
+        }
+      }
+    }
+    final ms = _parseJsonMap(json['ml_signal']);
+    return FinalVerdict(
+      level: (json['level'] as String? ?? 'low').toLowerCase(),
+      riskScore: _parseJsonInt(json['risk_score']) ?? 0,
+      safetyScore: _parseJsonInt(json['safety_score']) ?? 0,
+      reasons: reasons,
+      mlSignal: ms != null
+          ? MlSignal.fromJson(ms)
+          : MlSignal(label: 'Unknown', confidence: 0, role: 'primary'),
+    );
+  }
+}
+
 class ScanResult {
   final String label;
   final double confidence;
@@ -35,6 +175,14 @@ class ScanResult {
   final CertificateInfo? certificate;
   final ApkMetadata? metadata;
   final List<EngineResult>? multiEngineResults;
+  /// Raw `virustotal` object from API (fallback if [multiEngineResults] is empty).
+  final Map<String, dynamic>? virustotalRaw;
+  /// Backend: one-line combined verdict (ML + permissions + threat tier).
+  final String? verdictSummary;
+  /// Backend: which external engines are configured (`enabled` vs `not_configured`).
+  final Map<String, String>? scannerStatus;
+  /// Aggregated verdict (risk/safety, reasons, advisory ML). Prefer over raw [label].
+  final FinalVerdict? finalVerdict;
 
   ScanResult({
     required this.label,
@@ -47,6 +195,10 @@ class ScanResult {
     this.certificate,
     this.metadata,
     this.multiEngineResults,
+    this.virustotalRaw,
+    this.verdictSummary,
+    this.scannerStatus,
+    this.finalVerdict,
   });
 
   factory ScanResult.fromJson(Map<String, dynamic> json) {
@@ -57,10 +209,10 @@ class ScanResult {
     final mlMap = _parseJsonMap(json['ml_detection']);
     if (mlMap != null) {
       label = mlMap['label'] as String? ?? 'Unknown';
-      confidence = (mlMap['confidence'] as num? ?? 0.0).toDouble();
+      confidence = _parseJsonDouble(mlMap['confidence']);
     } else {
       label = json['label'] as String? ?? 'Unknown';
-      confidence = (json['confidence'] as num? ?? 0.0).toDouble();
+      confidence = _parseJsonDouble(json['confidence']);
     }
 
     MalwareFamily? malwareFamily;
@@ -70,30 +222,36 @@ class ScanResult {
       malwareFamily = MalwareFamily.fromJson(mfMap);
     }
 
-    List<EngineResult>? multiEngineResults;
-    final mer = json['multi_engine_results'];
-    if (mer is List) {
-      multiEngineResults = mer
-          .map<EngineResult?>((e) {
-            final m = _parseJsonMap(e);
-            return m == null ? null : EngineResult.fromJson(m);
-          })
-          .whereType<EngineResult>()
-          .toList();
+    final multiEngineResults = _parseMultiEngineResultsList(
+      json['multi_engine_results'] ?? json['multiEngineResults'],
+    );
+    final virustotalRaw = _parseJsonMap(json['virustotal']);
+
+    Map<String, String>? scannerStatus;
+    final ss = json['scanner_status'];
+    if (ss is Map) {
+      scannerStatus = {
+        for (final e in ss.entries)
+          e.key.toString(): e.value.toString(),
+      };
+    }
+
+    FinalVerdict? finalVerdict;
+    final fvMap = _parseJsonMap(json['final_verdict']);
+    if (fvMap != null) {
+      try {
+        finalVerdict = FinalVerdict.fromJson(fvMap);
+      } catch (_) {
+        finalVerdict = null;
+      }
     }
 
     return ScanResult(
       label: label,
       confidence: confidence,
-      overallScore: (json['overall_score'] as num?)?.toInt(),
+      overallScore: _parseJsonInt(json['overall_score']),
       threatLevel: json['threat_level'] as String?,
-      recommendations: json['recommendations'] != null
-          ? (json['recommendations'] as List).map((e) => e.toString()).toList()
-          : (json['recommendation'] != null
-                ? (json['recommendation'] as List)
-                      .map((e) => e.toString())
-                      .toList()
-                : null),
+      recommendations: _parseRecommendationsList(json),
       permissionAnalysis: _parseJsonMap(json['permission_analysis']) != null
           ? PermissionAnalysis.fromJson(_parseJsonMap(json['permission_analysis'])!)
           : null,
@@ -105,6 +263,10 @@ class ScanResult {
           ? ApkMetadata.fromJson(_parseJsonMap(json['metadata'])!)
           : null,
       multiEngineResults: multiEngineResults,
+      virustotalRaw: virustotalRaw,
+      verdictSummary: json['verdict_summary'] as String?,
+      scannerStatus: scannerStatus,
+      finalVerdict: finalVerdict,
     );
   }
 
@@ -128,10 +290,72 @@ class ScanResult {
 
   int get confidencePercent => (confidence * 100).round();
 
-  // Risk level based on overall score (0-100, where 100 is safest)
-  // Thresholds aligned with backend (app_enhanced.py:767-774)
+  /// Rows for the Multi-engine UI: list from API, else a single row built from `virustotal`.
+  List<EngineResult> get enginesForDisplay {
+    if (multiEngineResults != null && multiEngineResults!.isNotEmpty) {
+      return multiEngineResults!;
+    }
+    final vt = virustotalRaw;
+    if (vt != null) {
+      try {
+        return [EngineResult.fromJson(vt)];
+      } catch (_) {}
+    }
+    return [];
+  }
+
+  /// Effective tier: [finalVerdict] from API, else [threatLevel] / score bands.
+  String get effectiveThreatLevel {
+    final fv = finalVerdict?.level.toLowerCase().trim();
+    if (fv != null &&
+        fv.isNotEmpty &&
+        const {'low', 'medium', 'high', 'critical'}.contains(fv)) {
+      return fv;
+    }
+    return riskLevel;
+  }
+
+  /// Hero title: **final aggregated verdict** — never the raw ML label alone.
+  String get displayHeadline {
+    final tl = effectiveThreatLevel;
+    switch (tl) {
+      case 'critical':
+        return 'CRITICAL RISK';
+      case 'high':
+        return 'HIGH RISK';
+      case 'medium':
+        return 'ELEVATED RISK';
+      case 'low':
+        return 'LOW RISK';
+      default:
+        return 'UNKNOWN RISK';
+    }
+  }
+
+  /// Under hero: primary AI line (final tier still reflects weighted + overrides).
+  String? get displayHeadlineSubtitle {
+    if (finalVerdict != null) {
+      final ms = finalVerdict!.mlSignal;
+      final mrs = ms.mlRiskScore;
+      if (mrs != null) {
+        return 'Model predicted risk: ${mrs.round()}/100 · ${ms.label} (${ms.confidencePercent}% model confidence) · combined with supporting signals';
+      }
+      return 'AI: ${ms.label} (${ms.confidencePercent}% model confidence)';
+    }
+    final tl = effectiveThreatLevel;
+    if (tl == 'unknown') return null;
+    return 'AI: ${label.toUpperCase()} (${confidencePercent}% confidence)';
+  }
+
+  /// Prefer backend `threat_level` (merged). Fallback to score bands.
   String get riskLevel {
-    if (overallScore == null) return threatLevel ?? 'unknown';
+    final tl = threatLevel?.toLowerCase().trim();
+    if (tl != null &&
+        tl.isNotEmpty &&
+        const {'low', 'medium', 'high', 'critical'}.contains(tl)) {
+      return tl;
+    }
+    if (overallScore == null) return 'unknown';
     if (overallScore! >= 70) return 'low';
     if (overallScore! >= 50) return 'medium';
     if (overallScore! >= 30) return 'high';
@@ -233,6 +457,8 @@ class PermissionAnalysis {
   final List<PermissionInfo> critical;
   final List<PermissionInfo> high;
   final List<PermissionInfo> medium;
+  final List<PermissionInfo> low;
+  final List<PermissionInfo> unknown;
   final List<SuspiciousCombo> suspiciousCombos;
 
   PermissionAnalysis({
@@ -241,6 +467,8 @@ class PermissionAnalysis {
     required this.critical,
     required this.high,
     required this.medium,
+    required this.low,
+    required this.unknown,
     required this.suspiciousCombos,
   });
 
@@ -273,6 +501,8 @@ class PermissionAnalysis {
       critical: mapPermList(json['critical']),
       high: mapPermList(json['high']),
       medium: mapPermList(json['medium']),
+      low: mapPermList(json['low']),
+      unknown: mapPermList(json['unknown']),
       suspiciousCombos: mapComboList(json['suspicious_combos']),
     );
   }
@@ -293,9 +523,9 @@ class PermissionInfo {
 
   factory PermissionInfo.fromJson(Map<String, dynamic> json) {
     return PermissionInfo(
-      permission: json['permission'] as String? ?? '',
-      description: json['description'] as String? ?? '',
-      risk: json['risk'] as String? ?? '',
+      permission: json['permission']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
+      risk: json['risk']?.toString() ?? '',
     );
   }
 }
@@ -304,11 +534,16 @@ class SuspiciousCombo {
   final String threat;
   final String description;
   final List<String>? permissions;
+  /// True when this row comes from a user-defined [ThreatRule] on the server.
+  final bool customRule;
+  final String? ruleName;
 
   SuspiciousCombo({
     required this.threat,
     required this.description,
     this.permissions,
+    this.customRule = false,
+    this.ruleName,
   });
 
   factory SuspiciousCombo.fromJson(Map<String, dynamic> json) {
@@ -318,6 +553,8 @@ class SuspiciousCombo {
       permissions: (json['permissions'] as List?)
           ?.map((e) => e.toString())
           .toList(),
+      customRule: _parseJsonBool(json['custom_rule']) ?? false,
+      ruleName: json['rule_name'] as String?,
     );
   }
 }
@@ -375,13 +612,15 @@ class EngineResult {
   });
 
   factory EngineResult.fromJson(Map<String, dynamic> json) {
+    final dr = json['detection_ratio'];
+    final eng = json['engine'];
     return EngineResult(
-      engine: json['engine'] as String? ?? 'Unknown',
+      engine: eng == null ? 'Unknown' : eng.toString(),
       found: _parseJsonBoolOrFalse(json['found']),
       malicious: _parseJsonBoolOrFalse(json['malicious']),
-      verdict: json['verdict'] as String?,
-      detectionRatio: json['detection_ratio'] as String?,
-      error: json['error'] as String?,
+      verdict: json['verdict']?.toString(),
+      detectionRatio: dr == null ? null : dr.toString(),
+      error: json['error']?.toString(),
     );
   }
 }

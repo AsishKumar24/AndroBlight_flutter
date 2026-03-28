@@ -42,19 +42,20 @@ class ScanProvider extends ChangeNotifier {
   bool get hasResult => _status == ScanStatus.success && _result != null;
   bool get hasError => _status == ScanStatus.error;
   bool get isBackendOnline => _isBackendOnline;
-  bool get isUsingDemoMode => !_isBackendOnline;
+  /// Kept for compatibility; real APK/Play Store scans always call the API (not local mock).
+  bool get isUsingDemoMode => false;
 
   // Device security getters (4A)
   DeviceSecurityInfo? get deviceSecurity => _deviceSecurity;
   bool get isDeviceRooted => _deviceSecurity?.isRooted ?? false;
   bool get deviceSecurityChecked => _deviceSecurityChecked;
 
-  /// Explicit message for the loading overlay based on current mode
+  /// Loading overlay text (real network scan — no local mock except [isSample]).
   String get scanningMessage {
-    if (!_isBackendOnline) return 'Demo Mode: Simulating Deep Analysis...';
     if (_uploadProgress < 0.1) return 'Connecting to Security Cluster...';
-    if (_uploadProgress < 0.9)
+    if (_uploadProgress < 0.9) {
       return 'Uploading APK for Extraction (${(_uploadProgress * 100).round()}%)...';
+    }
     return 'Server Analysis: Extracting Manifest & Permissions...';
   }
 
@@ -148,6 +149,8 @@ class ScanProvider extends ChangeNotifier {
             risk: 'Medium',
           ),
         ],
+        low: [],
+        unknown: [],
         suspiciousCombos: isMalware
             ? [
                 SuspiciousCombo(
@@ -174,9 +177,19 @@ class ScanProvider extends ChangeNotifier {
     );
   }
 
+  /// Clears the backend `scan_cache.json` (all cached scan results).
+  Future<void> clearServerScanCache() async {
+    await _scanRepository.clearServerScanCache();
+  }
+
   /// Scan an APK file
   /// [isSample] forces demo mode behavior for testing
-  Future<void> scanApkFile(File file, {bool isSample = false}) async {
+  /// [forceRescan] sends `force_rescan=true` to bypass server cache for this file.
+  Future<void> scanApkFile(
+    File file, {
+    bool isSample = false,
+    bool forceRescan = false,
+  }) async {
     _status = ScanStatus.scanning;
     _result = null;
     _errorMessage = null;
@@ -188,8 +201,9 @@ class ScanProvider extends ChangeNotifier {
     try {
       ScanResult result;
 
-      if (!_isBackendOnline || isSample) {
-        // Demo mode or forced sample
+      // Only explicit sample scans use the local mock. Real uploads always hit the API
+      // so recommendations/threat data match the server (health flag can be stale).
+      if (isSample) {
         for (int i = 0; i <= 100; i += 10) {
           await Future.delayed(const Duration(milliseconds: 100));
           _uploadProgress = i / 100;
@@ -197,11 +211,10 @@ class ScanProvider extends ChangeNotifier {
         }
         await Future.delayed(const Duration(milliseconds: 300));
         result = _generateMockResult(
-          fileName: isSample ? 'sample_malware.apk' : _currentFileName,
-          fileSize: isSample ? 15728640 : _currentFileSize,
+          fileName: 'sample_malware.apk',
+          fileSize: 15728640,
         );
       } else {
-        // Production mode - real API
         result = await _scanRepository.scanApkFile(
           file,
           deviceInfo: _deviceSecurity?.toMap(),
@@ -209,7 +222,9 @@ class ScanProvider extends ChangeNotifier {
             _uploadProgress = sent / total;
             notifyListeners();
           },
+          forceRescan: forceRescan,
         );
+        setBackendStatus(true);
       }
 
       _result = result;
@@ -246,14 +261,8 @@ class ScanProvider extends ChangeNotifier {
     try {
       ScanResult result;
 
-      if (!_isBackendOnline) {
-        // Demo mode
-        await Future.delayed(const Duration(seconds: 2));
-        result = _generateMockResult(fileName: input);
-      } else {
-        // Production mode
-        result = await _scanRepository.scanPlayStoreApp(input);
-      }
+      result = await _scanRepository.scanPlayStoreApp(input);
+      setBackendStatus(true);
 
       _result = result;
       _status = ScanStatus.success;

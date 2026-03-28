@@ -125,6 +125,7 @@ class ApiService {
     File file, {
     Map<String, dynamic>? deviceInfo,
     void Function(int sent, int total)? onProgress,
+    bool forceRescan = false,
   }) async {
     try {
       final Map<String, dynamic> fields = {
@@ -133,6 +134,10 @@ class ApiService {
           filename: file.path.split(Platform.pathSeparator).last,
         ),
       };
+
+      if (forceRescan) {
+        fields['force_rescan'] = 'true';
+      }
 
       // Attach device info fields for root detection (4A)
       if (deviceInfo != null) {
@@ -198,6 +203,19 @@ class ApiService {
       return ScanResult.fromJson(Map<String, dynamic>.from(data));
     }
     throw ServerException('Invalid scan response: expected JSON object');
+  }
+
+  /// Clears server-side scan cache (`scan_cache.json`). POST /clear-cache
+  Future<void> clearServerScanCache() async {
+    try {
+      final response = await _dio.post(ApiConfig.clearCacheEndpoint);
+      if (response.statusCode == 200) {
+        return;
+      }
+      throw ServerException('Unexpected response when clearing cache');
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
   }
 
   // ============================================================================
