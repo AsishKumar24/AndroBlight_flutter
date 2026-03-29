@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -6,6 +7,7 @@ import '../core/app_styling_tokens.dart';
 import '../core/theme.dart';
 import '../core/responsive.dart';
 import '../models/scan_result.dart';
+import '../services/device_security_service.dart';
 import 'home_screen.dart';
 
 /// Result — scan analysis (lavender page, brand app bar, soft cards).
@@ -15,12 +17,178 @@ class ResultScreen extends StatelessWidget {
   final String scanType;
   final String identifier;
 
+  /// Local path to the scanned APK (APK flow only). Used to open the system installer
+  /// when the model verdict is benign.
+  final String? apkLocalPath;
+
   const ResultScreen({
     super.key,
     required this.result,
     required this.scanType,
     required this.identifier,
+    this.apkLocalPath,
   });
+
+  String? _resolvePlayPackage() {
+    final p = result.metadata?.packageName?.trim();
+    if (p != null && p.isNotEmpty) return p;
+    final re = RegExp(r'[?&]id=([^&]+)');
+    final m = re.firstMatch(identifier);
+    return m?.group(1);
+  }
+
+  List<Widget> _benignInstallActions(BuildContext context, Responsive r) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return [];
+    }
+    if (!result.isBenign) return [];
+
+    if (scanType == 'APK Scan' &&
+        apkLocalPath != null &&
+        apkLocalPath!.isNotEmpty) {
+      return [
+        _buildSectionHeader(context, r, 'Install', Icons.install_mobile_rounded),
+        Text(
+          'If you trust this file, you can install it. A benign scan is not a guarantee of safety.',
+          style: TextStyle(
+            fontSize: r.sp(12),
+            color: AppTheme.textSecondary,
+            height: 1.35,
+          ),
+        ),
+        SizedBox(height: r.spacingMD),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _handleInstallApk(context),
+            icon: const Icon(Icons.install_mobile_rounded),
+            label: const Text('Install this APK'),
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(vertical: r.spacingMD + 2),
+              backgroundColor: AppTheme.benignGreen,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: r.spacingLG),
+      ];
+    }
+
+    if (scanType == 'Play Store') {
+      final pkg = _resolvePlayPackage();
+      if (pkg == null || pkg.isEmpty) return [];
+      return [
+        _buildSectionHeader(context, r, 'Get app', Icons.shopping_bag_rounded),
+        Text(
+          'Open Google Play to install or update this app.',
+          style: TextStyle(
+            fontSize: r.sp(12),
+            color: AppTheme.textSecondary,
+            height: 1.35,
+          ),
+        ),
+        SizedBox(height: r.spacingMD),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _handleOpenPlayInstall(context, pkg),
+            icon: const Icon(Icons.shopping_bag_rounded),
+            label: const Text('Open in Play Store'),
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(vertical: r.spacingMD + 2),
+              backgroundColor: AppTheme.brand,
+              foregroundColor: AppTheme.onBrand,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: r.spacingLG),
+      ];
+    }
+
+    return [];
+  }
+
+  Future<void> _handleInstallApk(BuildContext context) async {
+    final path = apkLocalPath;
+    if (path == null || path.isEmpty) return;
+    final svc = DeviceSecurityService();
+    final installResult = await svc.installApk(path);
+    if (!context.mounted) return;
+    if (installResult.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Opening system installer…')),
+      );
+      return;
+    }
+    if (installResult.needsInstallPermission) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Allow installs'),
+          content: const Text(
+            'Android needs permission for AndroBlight to install APKs. '
+            'Open Settings, allow installation from this app, then try again.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Open Settings'),
+            ),
+          ],
+        ),
+      );
+      if (go == true && context.mounted) {
+        await svc.openInstallPermissionSettings();
+      }
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          installResult.message ?? 'Could not start install',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleOpenPlayInstall(
+    BuildContext context,
+    String packageName,
+  ) async {
+    final market = Uri.parse('market://details?id=$packageName');
+    final https = Uri.parse(
+      'https://play.google.com/store/apps/details?id=$packageName',
+    );
+    try {
+      if (await canLaunchUrl(market)) {
+        await launchUrl(market, mode: LaunchMode.externalApplication);
+      } else if (await canLaunchUrl(https)) {
+        await launchUrl(https, mode: LaunchMode.externalApplication);
+      } else if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open Play Store')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e')),
+        );
+      }
+    }
+  }
 
   /// Icon + color per line — backend sends emojis; avoid one green check for every row.
   (IconData, Color) _recommendationVisual(String rec) {
@@ -507,6 +675,8 @@ class ResultScreen extends StatelessWidget {
                       _buildMetadataTable(result, r, context),
 
                       SizedBox(height: r.spacingLG + 8),
+
+                      ..._benignInstallActions(context, r),
 
                       if (result.metadata?.sha256 != null)
                         SizedBox(

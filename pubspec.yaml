@@ -47,6 +47,7 @@ flutter:
   assets:
     - assets/
     - assets/launcher/
+    - assets/developers/
 
 # Launcher icons — source files in assets/launcher/ (same artwork as app_logo, square + padded).
 # launcher_icon_1024.png: master for flutter_launcher_icons (recommended 1024×1024).

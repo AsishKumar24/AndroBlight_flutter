@@ -101,9 +101,13 @@
 package com.androblight.andro_blight
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
+import androidx.core.content.FileProvider
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -235,6 +239,59 @@ class DeviceSecurityPlugin(private val context: Context) :
                     result.success(names)
                 } catch (e: Exception) {
                     result.error("ERROR", e.message, null)
+                }
+            }
+
+            /** Open system UI to allow installing APKs from this app (Android 8+). */
+            "openInstallPermissionSettings" -> {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    }
+                    result.success(true)
+                } catch (e: Exception) {
+                    result.error("ERROR", e.message, null)
+                }
+            }
+
+            /** Launch package installer for a local APK path (must stay under FileProvider paths). */
+            "installApk" -> {
+                val path = call.argument<String>("path")
+                if (path.isNullOrBlank()) {
+                    result.error("INVALID_ARGUMENT", "path required", null)
+                    return
+                }
+                try {
+                    val file = File(path)
+                    if (!file.exists()) {
+                        result.error("NOT_FOUND", "APK file not found", null)
+                        return
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        if (!context.packageManager.canRequestPackageInstalls()) {
+                            result.error(
+                                "INSTALL_PERMISSION_REQUIRED",
+                                "Allow installs from this app in Settings",
+                                mapOf("package" to context.packageName),
+                            )
+                            return
+                        }
+                    }
+                    val authority = "${context.packageName}.fileprovider"
+                    val uri = FileProvider.getUriForFile(context, authority, file)
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "application/vnd.android.package-archive")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(intent)
+                    result.success(true)
+                } catch (e: Exception) {
+                    result.error("INSTALL_FAILED", e.message ?: "install failed", null)
                 }
             }
 

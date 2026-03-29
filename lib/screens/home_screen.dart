@@ -9,8 +9,52 @@ import 'installed_apps_screen.dart';
 import 'rules_screen.dart';
 import 'two_fa_setup_screen.dart';
 import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../providers/scan_provider.dart';
 import '../providers/totp_provider.dart';
+import '../models/developer_profile.dart';
+import 'developer_detail_screen.dart';
+import 'login_screen.dart';
+
+// Group 47 — tap a row to open [DeveloperDetailScreen]; edit bios here.
+const List<DeveloperProfile> _kDevelopers = [
+  DeveloperProfile(
+    name: 'Akash Kumar',
+    role: 'ML & Backend Engineer',
+    photoAssetPath: 'assets/developers/akashkumar.jpeg',
+    githubUrl: 'https://github.com/88-akash',
+    linkedinUrl: 'https://www.linkedin.com/in/88-akashkumar/',
+    kiitRollNo: '2230008',
+    bio:
+        'ML and deep learning engineer who builds intelligent systems that actually ship — from model design and training loops to the APIs and backends that serve predictions at scale.\n\n'
+        'Strong across the classic ML/DL stack; comfortable on mobile with React Native when the product needs a sharp client. Day-to-day focus: ML quality, experimentation discipline, and backend reliability — not slide-deck demos.\n\n'
+        'On AndroBlight: the model story — features, risk signals, and the pipeline that turns raw APK signals into verdicts users can trust.',
+  ),
+  DeveloperProfile(
+    name: 'Ashmit Dutta',
+    role: 'Flutter & IoT Developer',
+    photoAssetPath: 'assets/developers/ashmitdutta.jpeg',
+    githubUrl: 'https://github.com/ashmitdutta',
+    linkedinUrl: 'https://www.linkedin.com/in/ashmit-dutta/',
+    kiitRollNo: '2230156',
+    bio:
+        'Electronics-minded builder who loves the path from bits to boards — Flutter and Dart on the frontend for fluid, modern UIs, plus Arduino and IoT when the product has to talk to sensors and the real world.\n\n'
+        'Comfortable straddling hardware bring-up and polished mobile experiences: prototype fast, iterate cleanly, ship something people actually want to use.\n\n'
+        'On AndroBlight: the client app — navigation, screens, and the Dart layer that keeps scans and results feel instant and clear.',
+  ),
+  DeveloperProfile(
+    name: 'Asish Kumar',
+    role: 'Full-stack Developer',
+    photoAssetPath: 'assets/developers/asishkumar.jpeg',
+    githubUrl: 'https://github.com/AsishKumar24',
+    linkedinUrl: 'https://www.linkedin.com/in/k-asish-kumar-b38ab0215/',
+    kiitRollNo: '2230240',
+    bio:
+        'Full-stack engineer who ships web and mobile apps end-to-end — React.js, React Native, Node.js, and MongoDB where users meet data, plus Flask and battle-tested REST APIs when the server has to be right.\n\n'
+        'Sharp on DSA, API design, and turning fuzzy requirements into production-ready, user-centric products — not demos that fall over under load.\n\n'
+        'On AndroBlight: backend architecture, secure integrations, and the pipelines that keep scans fast, honest, and scalable.',
+  ),
+];
 
 /// Home — main hub (lavender shell, brand cards, grouped actions).
 
@@ -30,6 +74,36 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ScanProvider>().checkDeviceSecurity();
     });
+  }
+
+  Future<void> _confirmAndLogout(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sign out'),
+        content: const Text(
+          'You will need to sign in again to use your account.\n\n'
+          'Scan history saved on this device is not removed — only your session ends.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    await context.read<AuthProvider>().logout();
+    if (!context.mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
   }
 
   @override
@@ -361,27 +435,46 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          Material(
-            color: AppTheme.brand.withAlpha(22),
-            borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const HistoryScreen(),
-                  ),
-                );
-              },
-              borderRadius: BorderRadius.circular(14),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Icon(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Scan history',
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const HistoryScreen(),
+                    ),
+                  );
+                },
+                icon: Icon(
                   Icons.history_rounded,
-                  color: AppTheme.brand,
-                  size: r.adaptive(small: 22.0, medium: 24.0),
+                  size: 20,
+                  color: AppTheme.textMuted,
+                ),
+                style: IconButton.styleFrom(
+                  padding: const EdgeInsets.all(6),
+                  minimumSize: const Size(32, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  foregroundColor: AppTheme.textMuted,
                 ),
               ),
-            ),
+              IconButton(
+                tooltip: 'Sign out',
+                onPressed: () => _confirmAndLogout(context),
+                icon: Icon(
+                  Icons.logout_rounded,
+                  size: 20,
+                  color: AppTheme.textMuted.withAlpha(200),
+                ),
+                style: IconButton.styleFrom(
+                  padding: const EdgeInsets.all(6),
+                  minimumSize: const Size(32, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  foregroundColor: AppTheme.textMuted,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -472,7 +565,109 @@ class _HomeScreenState extends State<HomeScreen> {
             color: AppTheme.textMuted.withAlpha(180),
           ),
         ),
+        if (_kDevelopers.isNotEmpty) ...[
+          SizedBox(height: r.spacingLG),
+          _buildDevelopersSection(context, r),
+        ],
       ],
+    );
+  }
+
+  Widget _buildDevelopersSection(BuildContext context, Responsive r) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(
+        horizontal: r.spacingMD,
+        vertical: r.spacingSM + 2,
+      ),
+      decoration: BoxDecoration(
+        color: AppTheme.brand.withAlpha(12),
+        borderRadius: BorderRadius.circular(AppRadius.r20(context)),
+        border: Border.all(color: AppTheme.brand.withAlpha(28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            'DEVELOPERS',
+            style: TextStyle(
+              fontSize: r.sp(10),
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.0,
+              color: AppTheme.textMuted,
+            ),
+          ),
+          SizedBox(height: r.spacingSM),
+          ..._kDevelopers.map((d) => _buildDeveloperRow(context, r, d)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeveloperRow(
+    BuildContext context,
+    Responsive r,
+    DeveloperProfile d,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => DeveloperDetailScreen(profile: d),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.person_outline_rounded,
+                  size: 18,
+                  color: AppTheme.brand.withAlpha(200),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                        fontSize: r.sp(12),
+                        height: 1.35,
+                        color: AppTheme.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: d.name,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        TextSpan(
+                          text: ' · ${d.role}',
+                          style: TextStyle(
+                            color: AppTheme.textMuted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: AppTheme.textMuted.withAlpha(160),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

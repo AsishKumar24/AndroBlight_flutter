@@ -76,6 +76,7 @@ class _ScanApkScreenState extends State<ScanApkScreen> {
             result: result,
             scanType: 'APK Scan',
             identifier: scan.currentFileName ?? 'Selected File',
+            apkLocalPath: _selectedFile?.path,
           ),
         ),
       );
