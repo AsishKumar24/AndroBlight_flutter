@@ -7,7 +7,7 @@ class ApiConfig {
   static const bool devMode = false;
 
   // Backend base URL - change this to your actual backend URL
-  static const String baseUrl = 'http://10.0.2.2:5111';
+  static const String baseUrl = 'http://localhost:5111';
 
   // Scan Endpoints
   static const String healthEndpoint = '/health';
